@@ -29,7 +29,11 @@ defmodule AbsintheGraphqlWS.MixProject do
 
   defp deps do
     [
-      {:absinthe, "~> 1.6"},
+      #      {:absinthe, "~> 1.6"},
+      {:absinthe,
+       git: "https://github.com/circles-learning-labs/absinthe.git",
+       branch: "working",
+       override: true},
       {:absinthe_phoenix, "> 0.0.0"},
       {:benchee, "> 0.0.0", only: [:bench]},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -37,7 +41,7 @@ defmodule AbsintheGraphqlWS.MixProject do
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:eljiffy, "> 0.0.0", only: [:bench]},
       {:ex_doc, "~> 0.24", only: :dev, runtime: false},
-      {:gun, "~> 2.0", only: [:test]},
+      {:gun, "~> 2.0", runtime: false},
       {:jason, "~> 1.2", optional: true},
       {:markdown_formatter, "~> 0.5", only: :dev, runtime: false},
       {:mix_audit, "~> 1.0", only: [:dev, :test], runtime: false},
@@ -48,7 +52,7 @@ defmodule AbsintheGraphqlWS.MixProject do
 
   defp dialyzer do
     [
-      plt_add_apps: [:ex_unit, :mix, :jason],
+      plt_add_apps: [:ex_unit, :mix, :jason, :gun],
       plt_add_deps: :app_tree,
       plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
     ]

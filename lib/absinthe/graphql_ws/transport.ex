@@ -15,6 +15,8 @@ defmodule Absinthe.GraphqlWS.Transport do
   alias Phoenix.Socket.Broadcast
   require Logger
 
+  import Phoenix.Channel, only: [push: 3, reply: 2, socket_ref: 1]
+
   @ping "ping"
   @pong "pong"
 
@@ -232,20 +234,33 @@ defmodule Absinthe.GraphqlWS.Transport do
   end
 
   defp run_doc(socket, id, query, config, opts) do
+        IO.inspect Process.info(self(), [:current_stacktrace])
     case run(query, config[:schema], config[:pipeline], opts) do
       {:ok, %{"subscribed" => topic}, context} ->
-        debug("subscribed to topic #{topic}")
-
-        :ok =
-          Phoenix.PubSub.subscribe(
-            socket.pubsub,
-            topic,
-            # metadata: {:fastlane, self(), @serializer, []},
-            link: true
-          )
+        pubsub_subscribe(topic, socket)
 
         socket = merge_opts(socket, context: context)
         {:ok, %{socket | subscriptions: Map.put(socket.subscriptions, topic, id)}}
+
+      {:more, %{"subscribed" => topic}, continuations, context} ->
+        reply(socket_ref(socket), {:ok, %{subscriptionId: topic}})
+
+        pubsub_subscribe(topic, socket)
+        socket = Absinthe.Phoenix.Socket.put_options(socket, context: context)
+
+        handle_subscription_continuation(continuations, topic, socket)
+
+        {:noreply, socket}
+
+      {:more, %{data: _} = reply, continuations, context} ->
+        id = new_query_id()
+
+        socket =
+          socket
+          |> Absinthe.Phoenix.Socket.put_options(context: context)
+          |> handle_continuation(continuations, id)
+
+        {{:ok, add_query_id(reply, id)}, socket}
 
       {:ok, %{data: _} = reply, context} ->
         queue_complete_message(id)
@@ -265,6 +280,9 @@ defmodule Absinthe.GraphqlWS.Transport do
     {module, fun} = pipeline
 
     case Absinthe.Pipeline.run(document, apply(module, fun, [schema, options])) do
+      {:ok, %{result: %{continuations: continuations} = result, execution: res}, _phases} ->
+        {:more, Map.delete(result, :continuations), continuations, res.context}
+
       {:ok, %{result: result, execution: res}, _phases} ->
         {:ok, result, res.context}
 
@@ -272,6 +290,72 @@ defmodule Absinthe.GraphqlWS.Transport do
         {:error, msg}
     end
   end
+
+  defp pubsub_subscribe(topic, %{pubsub: pubsub}) do
+    :ok =
+      Phoenix.PubSub.subscribe(
+        pubsub,
+        topic,
+        link: true
+      )
+  end
+
+  defp handle_continuation(socket, continuations, id) do
+    case Absinthe.Pipeline.continue(continuations) do
+      {:ok, %{result: %{continuation: next_continuations} = result}, _phases} ->
+        result =
+          result
+          |> Map.delete(:continuations)
+          |> add_query_id(id)
+
+        push(socket, "doc", result)
+        handle_continuation(socket, next_continuations, id)
+
+      {:ok, %{result: result}, _phases} ->
+        push(socket, "doc", add_query_id(result, id))
+
+      {:ok, %{errors: errors}, _phases} ->
+        push(socket, "doc", add_query_id(%{errors: errors}, id))
+
+      {:error, msg, _phases} ->
+        push(socket, "doc", add_query_id(msg, id))
+
+      {:ok, %{result: :no_more_results}, _phases} ->
+        socket
+    end
+  end
+
+  defp handle_subscription_continuation(continuations, topic, socket) do
+    case Absinthe.Pipeline.continue(continuations) do
+      {:ok, %{result: :no_more_results}, _phases} ->
+        :ok
+
+      {:ok, %{result: result}, _phases} ->
+        socket = push_subscription_item(result.data, topic, socket)
+
+        case result[:continuations] do
+          nil -> :ok
+          c -> handle_subscription_continuation(c, topic, socket)
+        end
+    end
+  end
+
+  defp push_subscription_item(data, topic, socket) do
+    msg = %Phoenix.Socket.Broadcast{
+      topic: topic,
+      event: "subscription:data",
+      payload: %{result: %{data: data}, subscriptionId: topic}
+    }
+
+    {:noreply, socket} = handle_info(msg, socket)
+
+    socket
+  end
+
+  defp new_query_id,
+    do: "absinthe_query:" <> to_string(:erlang.unique_integer([:positive]))
+
+  defp add_query_id(result, id), do: Map.put(result, :queryId, id)
 
   defp merge_opts(socket, opts) do
     %{socket | absinthe: %{socket.absinthe | opts: opts}}

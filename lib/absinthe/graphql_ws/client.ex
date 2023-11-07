@@ -28,11 +28,13 @@ defmodule Absinthe.GraphqlWS.Client do
 
   def init(endpoint: endpoint, monitor: monitor, transport: transport) do
     uri = URI.parse(endpoint)
-    path_query = if uri.query do
-      uri.path <> "?" <> uri.query
-    else
-      uri.path
-    end
+
+    path_query =
+      if uri.query do
+        uri.path <> "?" <> uri.query
+      else
+        uri.path
+      end
 
     with {:ok, gun_pid} <-
            transport.open(uri.host |> to_charlist(), uri.port, %{protocols: [:http]}),

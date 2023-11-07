@@ -185,6 +185,8 @@ defmodule Absinthe.GraphqlWS.Socket do
   """
   @callback handle_init(payload :: map(), socket()) :: Socket.init()
 
+  @callback handle_connect(params :: map(), socket()) :: Socket.reply_message()
+
   @doc """
   Handle a `ping` message sent by the socket client. This will receive the
   `payload` from the message, defaulting to an empty map.
@@ -299,6 +301,7 @@ defmodule Absinthe.GraphqlWS.Socket do
   """
   @spec __connect__(module(), map(), Keyword.t()) :: {:ok, socket()}
   def __connect__(module, socket, options) do
+    IO.inspect socket
     absinthe_pipeline = Keyword.get(options, :pipeline, {__MODULE__, :absinthe_pipeline})
     pubsub = socket.endpoint.config(:pubsub_server)
     schema = Keyword.fetch!(options, :schema)
@@ -325,8 +328,9 @@ defmodule Absinthe.GraphqlWS.Socket do
       )
 
     debug("connect: #{socket}")
-    if function_exported?(module, :connect, 3) do
-      module.connect(socket.params, new_socket, socket.connect_info)
+
+    if function_exported?(module, :handle_connect, 2) do
+      module.handle_connect(socket.params, new_socket)
     else
       {:ok, new_socket}
     end
