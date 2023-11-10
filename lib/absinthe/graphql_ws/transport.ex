@@ -86,6 +86,26 @@ defmodule Absinthe.GraphqlWS.Transport do
     {:push, {:ping, @ping}, socket}
   end
 
+  def handle_info(
+        %Broadcast{
+          event: "subscription:data",
+          payload: %{result: %{ordinal: ordinal}} = payload,
+          topic: topic
+        },
+        socket
+      )
+      when not is_nil(ordinal) do
+    last_ordinal = socket.absinthe[:subscription_ordinals][topic]
+
+    if last_ordinal == nil or last_ordinal < ordinal do
+      socket = update_ordinal(socket, topic, ordinal)
+      subscription_id = socket.subscriptions[topic]
+      {:push, {:text, Message.Next.new(subscription_id, payload.result)}, socket}
+    else
+      {:ok, socket}
+    end
+  end
+
   def handle_info(%Broadcast{event: "subscription:data", payload: payload, topic: topic}, socket) do
     subscription_id = socket.subscriptions[topic]
     {:push, {:text, Message.Next.new(subscription_id, payload.result)}, socket}
@@ -251,10 +271,20 @@ defmodule Absinthe.GraphqlWS.Transport do
         response =
           Enum.map(
             socket.continuation_accumulator,
-            &{:text, Message.Next.new(socket.subscriptions[topic], &1)}
+            &{:text, Message.Next.new(socket.subscriptions[topic], &1.data)}
           )
 
-        {:reply, :ok, response, Util.clear_accumulator(socket)}
+        ordinal =
+          socket.continuation_accumulator
+          |> Enum.map(& &1[:ordinal])
+          |> Enum.max()
+
+        socket =
+          socket
+          |> update_ordinal(topic, ordinal)
+          |> Util.clear_accumulator()
+
+        {:reply, :ok, response, socket}
 
       {:more, %{data: _} = _reply, _continuations, _context} ->
         # TODO
@@ -305,7 +335,7 @@ defmodule Absinthe.GraphqlWS.Transport do
         socket
 
       {:ok, %{result: result}, _phases} ->
-        socket = Util.add_to_accumulator(socket, result.data)
+        socket = Util.add_to_accumulator(socket, result)
 
         case result[:continuations] do
           nil -> socket
@@ -314,10 +344,14 @@ defmodule Absinthe.GraphqlWS.Transport do
     end
   end
 
-  defp new_query_id,
-    do: "absinthe_query:" <> to_string(:erlang.unique_integer([:positive]))
+  defp update_ordinal(socket, topic, ordinal) do
+    ordinals =
+      socket.absinthe
+      |> Map.get(:subscription_ordinals, %{})
+      |> Map.put(topic, ordinal)
 
-  defp add_query_id(result, id), do: Map.put(result, :queryId, id)
+    %{socket | absinthe: Map.put(socket.absinthe, :subscription_ordinals, ordinals)}
+  end
 
   defp merge_opts(socket, opts) do
     %{socket | absinthe: %{socket.absinthe | opts: opts}}
