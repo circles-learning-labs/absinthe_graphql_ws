@@ -46,7 +46,8 @@ defmodule Absinthe.GraphqlWS.Socket do
     :pubsub,
     assigns: %{},
     initialized?: false,
-    subscriptions: %{}
+    subscriptions: %{},
+    continuation_accumulator: []
   ]
 
   @typedoc """
@@ -59,7 +60,8 @@ defmodule Absinthe.GraphqlWS.Socket do
           endpoint: module(),
           initialized?: boolean(),
           keepalive: integer(),
-          subscriptions: map()
+          subscriptions: map(),
+          continuation_accumulator: list()
         }
   @type socket() :: t()
 
@@ -209,7 +211,7 @@ defmodule Absinthe.GraphqlWS.Socket do
   """
   @callback handle_ping(payload :: map(), socket()) :: {:ok, socket()}
 
-  @optional_callbacks handle_message: 2, handle_init: 2, handle_ping: 2
+  @optional_callbacks handle_connect: 2, handle_message: 2, handle_init: 2, handle_ping: 2
 
   @spec __after_compile__(any(), any()) :: :ok
   def __after_compile__(env, _bytecode) do
@@ -301,7 +303,6 @@ defmodule Absinthe.GraphqlWS.Socket do
   """
   @spec __connect__(module(), map(), Keyword.t()) :: {:ok, socket()}
   def __connect__(module, socket, options) do
-    IO.inspect socket
     absinthe_pipeline = Keyword.get(options, :pipeline, {__MODULE__, :absinthe_pipeline})
     pubsub = socket.endpoint.config(:pubsub_server)
     schema = Keyword.fetch!(options, :schema)
