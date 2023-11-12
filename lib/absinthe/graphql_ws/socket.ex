@@ -328,8 +328,6 @@ defmodule Absinthe.GraphqlWS.Socket do
         pubsub: pubsub
       )
 
-    debug("connect: #{socket}")
-
     if function_exported?(module, :handle_connect, 2) do
       module.handle_connect(socket.params, new_socket)
     else
