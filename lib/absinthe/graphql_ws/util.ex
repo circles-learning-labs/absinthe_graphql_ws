@@ -73,6 +73,6 @@ defmodule Absinthe.GraphqlWS.Util do
   end
 
   def clear_accumulator(socket) do
-    %{socket | continuation_accumulator: nil}
+    %{socket | continuation_accumulator: []}
   end
 end
