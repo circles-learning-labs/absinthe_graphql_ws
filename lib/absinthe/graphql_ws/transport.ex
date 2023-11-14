@@ -277,7 +277,7 @@ defmodule Absinthe.GraphqlWS.Transport do
         ordinal =
           socket.continuation_accumulator
           |> Enum.map(& &1[:ordinal])
-          |> Enum.max()
+          |> Enum.max(&>=/2, fn -> nil end)
 
         socket =
           socket
