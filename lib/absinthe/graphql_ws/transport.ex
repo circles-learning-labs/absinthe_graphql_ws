@@ -271,7 +271,7 @@ defmodule Absinthe.GraphqlWS.Transport do
         response =
           Enum.map(
             socket.continuation_accumulator,
-            &{:text, Message.Next.new(socket.subscriptions[topic], &1.data)}
+            &{:text, Message.Next.new(id, &1.data)}
           )
 
         ordinal =
