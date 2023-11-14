@@ -284,7 +284,7 @@ defmodule Absinthe.GraphqlWS.Transport do
           |> update_ordinal(topic, ordinal)
           |> Util.clear_accumulator()
 
-        {:reply, :ok, response, socket}
+        {:reply, :ok, response, Map.put(socket.subscriptions, topic, id)}
 
       {:more, %{data: _} = _reply, _continuations, _context} ->
         # TODO
