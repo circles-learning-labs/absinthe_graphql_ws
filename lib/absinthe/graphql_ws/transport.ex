@@ -99,16 +99,14 @@ defmodule Absinthe.GraphqlWS.Transport do
 
     if last_ordinal == nil or last_ordinal < ordinal do
       socket = update_ordinal(socket, topic, ordinal)
-      subscription_id = socket.subscriptions[topic]
-      {:push, {:text, Message.Next.new(subscription_id, payload.result)}, socket}
+      push_if_valid_subscription(payload.result, topic, socket)
     else
       {:ok, socket}
     end
   end
 
   def handle_info(%Broadcast{event: "subscription:data", payload: payload, topic: topic}, socket) do
-    subscription_id = socket.subscriptions[topic]
-    {:push, {:text, Message.Next.new(subscription_id, payload.result)}, socket}
+    push_if_valid_subscription(payload.result, topic, socket)
   end
 
   def handle_info({:complete, id}, socket) do
@@ -181,7 +179,6 @@ defmodule Absinthe.GraphqlWS.Transport do
     end)
     |> case do
       {:ok, topic} ->
-        debug("unsubscribing from topic #{topic}")
         Phoenix.PubSub.unsubscribe(socket.pubsub, topic)
         Absinthe.Subscription.unsubscribe(socket.endpoint, topic)
 
@@ -358,4 +355,13 @@ defmodule Absinthe.GraphqlWS.Transport do
   end
 
   defp queue_complete_message(id), do: send(self(), {:complete, id})
+
+  defp push_if_valid_subscription(result, topic, socket) do
+    subscription_id = socket.subscriptions[topic]
+    if subscription_id do
+      {:push, {:text, Message.Next.new(subscription_id, result)}, socket}
+    else
+      {:ok, socket}
+    end
+  end
 end
