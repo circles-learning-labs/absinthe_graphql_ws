@@ -125,9 +125,13 @@ defmodule Absinthe.GraphqlWS.Transport do
   Process was stopped.
   """
   @spec terminate(term(), socket()) :: :ok
-  def terminate(reason, _socket) do
+  def terminate(reason, socket) do
     debug("terminated: #{inspect(reason)}")
-    :ok
+    if function_exported?(socket.handler, :handle_close, 2) do
+      socket.handler.handle_close(reason, socket)
+    else
+      :ok
+    end
   end
 
   @doc """
@@ -281,7 +285,8 @@ defmodule Absinthe.GraphqlWS.Transport do
           |> update_ordinal(topic, ordinal)
           |> Util.clear_accumulator()
 
-        {:reply, :ok, response, %{socket | subscriptions: Map.put(socket.subscriptions, topic, id)}}
+        {:reply, :ok, response,
+         %{socket | subscriptions: Map.put(socket.subscriptions, topic, id)}}
 
       {:more, %{data: _} = _reply, _continuations, _context} ->
         # TODO
@@ -358,6 +363,7 @@ defmodule Absinthe.GraphqlWS.Transport do
 
   defp push_if_valid_subscription(result, topic, socket) do
     subscription_id = socket.subscriptions[topic]
+
     if subscription_id do
       {:push, {:text, Message.Next.new(subscription_id, result)}, socket}
     else

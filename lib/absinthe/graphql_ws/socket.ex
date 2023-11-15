@@ -211,7 +211,13 @@ defmodule Absinthe.GraphqlWS.Socket do
   """
   @callback handle_ping(payload :: map(), socket()) :: {:ok, socket()}
 
-  @optional_callbacks handle_connect: 2, handle_message: 2, handle_init: 2, handle_ping: 2
+  @callback handle_close(reason :: term(), socket()) :: :ok
+
+  @optional_callbacks handle_connect: 2,
+                      handle_message: 2,
+                      handle_init: 2,
+                      handle_ping: 2,
+                      handle_close: 2
 
   @spec __after_compile__(any(), any()) :: :ok
   def __after_compile__(env, _bytecode) do
