@@ -336,6 +336,44 @@ defmodule Absinthe.GraphqlWS.SocketTest do
     end
   end
 
+  describe "ordinal handling" do
+    setup [:setup_client, :send_connection_init]
+
+    test "correctly calls comparison callback and only sends when required",
+         %{client: client} do
+           id = "ordinal_subscription"
+      :ok =
+        Test.Client.push(client, %{
+          id: id,
+          type: "subscribe",
+          payload: %{
+            query: """
+            subscription { ordinal }
+            """
+          }
+        })
+
+      assert {:ok, []} = Test.Client.get_new_replies(client)
+
+      Absinthe.Subscription.publish(Test.Site.Endpoint, 1, ordinal: "ordinal_topic")
+
+      assert_json_received(client, %{
+        "id" => id,
+        "payload" => %{
+          "data" => %{"ordinal" => 1}
+        },
+        "type" => "next"
+      })
+
+      # This should not generate a new message because the compare function will have
+      # returned false (since it does a old > new comparison)
+      Absinthe.Subscription.publish(Test.Site.Endpoint, 2, ordinal: "ordinal_topic")
+
+      assert {:ok, []} = Test.Client.get_new_replies(client)
+    end
+  end
+
+
   describe "handle_ping callbacks" do
     setup [:setup_client, :send_connection_init]
 

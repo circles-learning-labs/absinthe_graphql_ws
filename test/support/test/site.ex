@@ -103,6 +103,16 @@ defmodule Test.Site do
 
         resolve(&Resolvers.handle_messages/3)
       end
+
+      field :ordinal, :integer do
+        config(fn _, _ ->
+          {:ok,
+            topic: "ordinal_topic",
+            ordinal: fn value -> value end,
+            ordinal_compare: fn old, new -> {is_nil(old) || old > new, new + 1} end
+          }
+        end)
+      end
     end
   end
 

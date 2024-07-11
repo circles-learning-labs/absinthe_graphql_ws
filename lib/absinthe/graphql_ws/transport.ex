@@ -89,7 +89,7 @@ defmodule Absinthe.GraphqlWS.Transport do
   def handle_info(
         %Broadcast{
           event: "subscription:data",
-          payload: %{result: %{ordinal: ordinal}} = payload,
+          payload: %{result: %{ordinal: ordinal, ordinal_compare_fun: ordinal_compare_fun}} = payload,
           topic: topic
         },
         socket
@@ -97,9 +97,12 @@ defmodule Absinthe.GraphqlWS.Transport do
       when not is_nil(ordinal) do
     last_ordinal = socket.absinthe[:subscription_ordinals][topic]
 
-    if last_ordinal == nil or last_ordinal < ordinal do
-      socket = update_ordinal(socket, topic, ordinal)
-      push_if_valid_subscription(payload.result, topic, socket)
+        {should_send, new_ordinal} = ordinal_compare_fun.(last_ordinal, ordinal)
+    socket = update_ordinal(socket, topic, new_ordinal)
+
+    if should_send do
+      result = Map.drop(payload.result, [:ordinal, :ordinal_compare_fun])
+      push_if_valid_subscription(result, topic, socket)
     else
       {:ok, socket}
     end
@@ -274,10 +277,7 @@ defmodule Absinthe.GraphqlWS.Transport do
           |> Enum.reverse()
           |> Enum.map(&{:text, Message.Next.new(id, %{data: &1.data})})
 
-        ordinal =
-          socket.continuation_accumulator
-          |> Enum.map(& &1[:ordinal])
-          |> Enum.max(&>=/2, fn -> nil end)
+        ordinal = find_last_ordinal(socket.continuation_accumulator)
 
         socket =
           socket
@@ -368,5 +368,13 @@ defmodule Absinthe.GraphqlWS.Transport do
     else
       {:ok, socket}
     end
+  end
+
+  defp find_last_ordinal(continuations) do
+    Enum.reduce(continuations, nil,
+      fn %{ordinal: ordinal, ordinal_compare_fun: ordinal_compare_fun}, last_ordinal ->
+        {_higher, new_ordinal} = ordinal_compare_fun.(last_ordinal, ordinal)
+        new_ordinal
+    end)
   end
 end
